@@ -35,26 +35,22 @@ fisher install edc/bass
 1. 编辑Fish配置文件：
 
 ```
-nano ~/.config/fish/config.fish
+vim ~/.config/fish/config.fish
 ```
 
 2. 找到ROS相关配置部分，可能看起来像这样：
 
 ```fish
-# >>> fishros initialize >>>
 source /opt/ros/jazzy/setup.bash
-# <<< fishros initialize <<<
 ```
 
 3. 修改为使用bass：
 
 ```fish
-# >>> fishros initialize >>>
 bass source /opt/ros/jazzy/setup.bash
-# <<< fishros initialize <<<
 ```
 
-4. 保存并关闭文件（在nano中使用`Ctrl+X`，然后输入`Y`，最后按`Enter`）
+4. 保存并关闭文件(:wq)
 
 ### 步骤4：应用更改
 
