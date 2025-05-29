@@ -1,142 +1,142 @@
 #!/bin/bash
 
-# 确保脚本以 root 权限运行
+# Ensure the script runs with root privileges
 if [[ $EUID -ne 0 ]]; then
-   echo "请以 root 权限运行此脚本。"
+   echo "Please run this script as root."
    exit 1
 fi
 
-# 配置变量
-GRUB_CFG_PATH="/boot/grub2/grub.cfg"       # BIOS 系统
-# GRUB_CFG_PATH="/boot/efi/EFI/rocky/grub.cfg" # UEFI 系统，请根据实际情况取消注释
+# Configuration variables
+GRUB_CFG_PATH="/boot/grub2/grub.cfg"       # For BIOS systems
+# GRUB_CFG_PATH="/boot/efi/EFI/rocky/grub.cfg" # For UEFI systems, uncomment as needed
 
-# 备份当前的 grub.cfg
+# Backup current grub.cfg
 BACKUP_PATH="/boot/grub2/grub.cfg.backup_$(date +%F_%T)"
 cp "$GRUB_CFG_PATH" "$BACKUP_PATH"
 if [[ $? -ne 0 ]]; then
-    echo "备份 grub.cfg 失败，请检查权限和路径。"
+    echo "Failed to backup grub.cfg, please check permissions and path."
     exit 1
 fi
-echo "已备份 grub.cfg 至 $BACKUP_PATH"
+echo "grub.cfg backed up to $BACKUP_PATH"
 
-# 获取所有的 menuentry
+# Get all menuentries
 mapfile -t MENU_ENTRIES < <(grep "^menuentry" "$GRUB_CFG_PATH" | cut -d "'" -f2)
 
 if [[ ${#MENU_ENTRIES[@]} -eq 0 ]]; then
-    echo "未找到任何 GRUB 引导项。"
+    echo "No GRUB boot entries found."
     exit 1
 fi
 
-echo "当前的 GRUB 引导项如下："
+echo "Current GRUB boot entries:"
 echo "----------------------------------"
 for i in "${!MENU_ENTRIES[@]}"; do
     echo "$((i+1)). ${MENU_ENTRIES[$i]}"
 done
 echo "----------------------------------"
 
-# 提示用户输入要删除的引导项编号（支持多个，用空格或逗号分隔）
-read -p "请输入要删除的引导项编号（用空格或逗号分隔，按 Enter 跳过）： " INPUT
+# Prompt user to select entries to delete (multiple entries allowed, separated by space or comma)
+read -p "Enter the numbers of boot entries to delete (space/comma separated, press Enter to skip): " INPUT
 
-# 如果用户没有输入，则退出
+# Exit if no input provided
 if [[ -z "$INPUT" ]]; then
-    echo "未选择任何引导项，脚本结束。"
+    echo "No entries selected, script exiting."
     exit 0
 fi
 
-# 处理用户输入，将逗号替换为空格，然后转换为数组
+# Process user input - replace commas with spaces and convert to array
 INPUT=$(echo "$INPUT" | tr ',' ' ')
 read -a DELETE_NUMBERS <<< "$INPUT"
 
-# 声明一个关联数组来存储要删除的引导项
+# Declare associative array to store entries to delete
 declare -A DELETE_ENTRIES
 
-# 验证输入的编号是否合法
+# Validate input numbers
 for num in "${DELETE_NUMBERS[@]}"; do
     if ! [[ "$num" =~ ^[0-9]+$ ]]; then
-        echo "无效的编号：$num，请输入数字编号。"
+        echo "Invalid number: $num, please enter numeric values."
         exit 1
     fi
     if (( num < 1 || num > ${#MENU_ENTRIES[@]} )); then
-        echo "编号 $num 超出范围，请输入 1 到 ${#MENU_ENTRIES[@]} 之间的数字。"
+        echo "Number $num is out of range, please enter between 1 and ${#MENU_ENTRIES[@]}."
         exit 1
     fi
-    # 存储要删除的引导项，防止重复
+    # Store entries to delete, preventing duplicates
     DELETE_ENTRIES["$num"]=1
 done
 
-# 确认删除操作
-echo "您选择要删除以下引导项："
+# Confirm deletion
+echo "You have selected to delete the following boot entries:"
 for num in "${!DELETE_ENTRIES[@]}"; do
     echo "$num. ${MENU_ENTRIES[$((num-1))]}"
 done
-read -p "确定要删除这些引导项吗？（y/N）： " CONFIRM
+read -p "Are you sure you want to delete these entries? (y/N): " CONFIRM
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "操作已取消。"
+    echo "Operation cancelled."
     exit 0
 fi
 
-# 遍历要删除的引导项
+# Process each entry marked for deletion
 for num in "${!DELETE_ENTRIES[@]}"; do
     ENTRY="${MENU_ENTRIES[$((num-1))]}"
-    echo "正在处理删除引导项：$ENTRY"
+    echo "Processing deletion of boot entry: $ENTRY"
 
-    # 判断引导项类型
+    # Determine entry type
     if [[ "$ENTRY" == Rocky* ]]; then
-        # 假设 Rocky Linux 快照的命名格式为 "Rocky Linux (snapshotX)"
+        # Assuming Rocky Linux snapshot naming format: "Rocky Linux (snapshotX)"
         SNAPSHOT_NAME=$(echo "$ENTRY" | grep -oP '(?<=Rocky Linux ).*')
-        # 提取快照名称，去除括号
+        # Extract snapshot name, remove parentheses
         SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | tr -d '()')
         
-        # 假设使用 Btrfs，且快照位于 /@snapshots 目录下
+        # Assuming Btrfs with snapshots in /@snapshots
         SNAPSHOT_PATH="/@snapshots/$SNAPSHOT_NAME"
         
-        # 检查快照是否存在
+        # Check if snapshot exists
         if sudo btrfs subvolume list / | grep -q "$SNAPSHOT_PATH"; then
-            echo "正在删除快照: $SNAPSHOT_PATH"
+            echo "Deleting snapshot: $SNAPSHOT_PATH"
             sudo btrfs subvolume delete "$SNAPSHOT_PATH"
             if [[ $? -ne 0 ]]; then
-                echo "删除快照 $SNAPSHOT_PATH 失败，请手动检查。"
+                echo "Failed to delete snapshot $SNAPSHOT_PATH, please check manually."
             else
-                echo "已删除快照: $SNAPSHOT_PATH"
+                echo "Snapshot deleted: $SNAPSHOT_PATH"
             fi
         else
-            echo "未找到快照 $SNAPSHOT_PATH，请手动检查。"
+            echo "Snapshot $SNAPSHOT_PATH not found, please check manually."
         fi
     elif [[ "$ENTRY" == Windows* ]]; then
-        echo "检测到 Windows 引导项。将从 GRUB 配置中移除该引导项。"
-        # 通常，Windows 引导项由 os-prober 自动检测，不建议手动删除
-        # 如果确实需要删除，可以禁用 os-prober 或手动编辑 grub.cfg（不推荐）
-        echo "请注意，删除 Windows 引导项可能需要进一步配置。建议谨慎操作。"
-        # 这里不执行实际删除操作
+        echo "Windows boot entry detected. Will remove this entry from GRUB configuration."
+        # Windows entries are usually auto-detected by os-prober, manual deletion not recommended
+        # If deletion is needed, disable os-prober or manually edit grub.cfg (not recommended)
+        echo "Note: Removing Windows boot entries may require additional configuration. Proceed with caution."
+        # No actual deletion performed here
     else
-        echo "未知类型的引导项：$ENTRY。跳过删除。"
+        echo "Unknown boot entry type: $ENTRY. Skipping deletion."
     fi
     echo "----------------------------------"
 done
 
-# 更新 GRUB 配置
-echo "正在更新 GRUB 配置..."
+# Update GRUB configuration
+echo "Updating GRUB configuration..."
 if [[ "$GRUB_CFG_PATH" == "/boot/grub2/grub.cfg" ]]; then
     grub2-mkconfig -o /boot/grub2/grub.cfg
 elif [[ "$GRUB_CFG_PATH" == "/boot/efi/EFI/rocky/grub.cfg" ]]; then
     grub2-mkconfig -o /boot/efi/EFI/rocky/grub.cfg
 else
-    echo "未知的 GRUB 配置路径，请手动更新 GRUB。"
+    echo "Unknown GRUB configuration path, please update GRUB manually."
     exit 1
 fi
 
 if [[ $? -ne 0 ]]; then
-    echo "更新 GRUB 配置失败。"
+    echo "Failed to update GRUB configuration."
     exit 1
 fi
 
-echo "GRUB 配置已更新。"
+echo "GRUB configuration updated successfully."
 
-# 重启系统提示
-echo "操作完成。建议重启系统以应用更改。"
-read -p "是否现在重启系统？（y/N）： " REBOOT_CONFIRM
+# Reboot prompt
+echo "Operation complete. A system reboot is recommended to apply changes."
+read -p "Reboot now? (y/N): " REBOOT_CONFIRM
 if [[ "$REBOOT_CONFIRM" =~ ^[Yy]$ ]]; then
     reboot
 else
-    echo "请手动重启系统以应用更改。"
+    echo "Please reboot manually to apply changes."
 fi
