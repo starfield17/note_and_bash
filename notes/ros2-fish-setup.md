@@ -1,117 +1,117 @@
-# 在Fish Shell中配置ROS2环境指南
+# Guide to Configuring ROS2 Environment in Fish Shell
 
-## 问题描述
+## Problem Description
 
-ROS2的环境设置脚本（如`setup.bash`）是为Bash shell编写的，而Fish shell无法直接执行这些Bash脚本。这会导致在Fish shell中无法使用`ros2`命令。
+ROS2's environment setup scripts (such as `setup.bash`) are written for the Bash shell, and the Fish shell cannot directly execute these Bash scripts. This results in the inability to use the `ros2` command in the Fish shell.
 
-## 解决方案：使用bass插件
+## Solution: Using the bass Plugin
 
-[bass](https://github.com/edc/bass)是一个Fish插件，可以让您在Fish中执行Bash命令和脚本。以下是完整的配置步骤：
+[bass](https://github.com/edc/bass) is a Fish plugin that allows you to execute Bash commands and scripts within Fish. Below are the complete configuration steps:
 
-### 步骤1：安装Fisher插件管理器
+### Step 1: Install the Fisher Plugin Manager
 
-Fisher是一个流行的Fish插件管理器，用于安装和管理Fish插件。
+Fisher is a popular Fish plugin manager used for installing and managing Fish plugins.
 
-1. 使用以下命令安装Fisher：
+1.  Install Fisher using the following command:
 
-```
-curl -sL https://raw.githubusercontent.com/jorgebucaran/fisher/main/functions/fisher.fish | source && fisher install jorgebucaran/fisher
-```
+    ```bash
+    curl -sL https://raw.githubusercontent.com/jorgebucaran/fisher/main/functions/fisher.fish | source && fisher install jorgebucaran/fisher
+    ```
 
-2. 验证Fisher安装成功：
+2.  Verify that Fisher is installed successfully:
 
-```
-fisher --version
-```
+    ```bash
+    fisher --version
+    ```
 
-### 步骤2：使用Fisher安装bass插件
+### Step 2: Install the bass Plugin Using Fisher
 
-```
+```bash
 fisher install edc/bass
 ```
 
-### 步骤3：配置ROS2环境
+### Step 3: Configure the ROS2 Environment
 
-1. 编辑Fish配置文件：
+1.  Edit the Fish configuration file:
 
-```
-vim ~/.config/fish/config.fish
-```
+    ```bash
+    vim ~/.config/fish/config.fish
+    ```
 
-2. 找到ROS相关配置部分，可能看起来像这样：
+2.  Find the ROS-related configuration section, which might look something like this:
 
-```fish
-source /opt/ros/jazzy/setup.bash
-```
+    ```fish
+    source /opt/ros/jazzy/setup.bash
+    ```
 
-3. 修改为使用bass：
+3.  Modify it to use bass:
 
-```fish
-bass source /opt/ros/jazzy/setup.bash
-```
+    ```fish
+    bass source /opt/ros/jazzy/setup.bash
+    ```
 
-4. 保存并关闭文件(:wq)
+4.  Save and close the file (:wq)
 
-### 步骤4：应用更改
+### Step 4: Apply the Changes
 
-有两种方式应用更改：
+There are two ways to apply the changes:
 
-1. 重新加载当前shell的配置：
+1.  Reload the configuration for the current shell:
 
-```
-source ~/.config/fish/config.fish
-```
+    ```bash
+    source ~/.config/fish/config.fish
+    ```
 
-2. 或者关闭并重新打开终端
+2.  Or, close and reopen the terminal.
 
-### 步骤5：验证配置
+### Step 5: Verify the Configuration
 
-运行以下命令验证ROS2环境已正确配置：
+Run the following command to verify that the ROS2 environment is configured correctly:
 
-```
+```bash
 ros2 --help
 ```
 
-如果输出了ROS2的帮助信息，说明配置成功。
+If the ROS2 help information is output, the configuration is successful.
 
-## 常见问题
+## Common Issues
 
-### 问题：找不到`fisher`命令
+### Issue: `fisher` command not found
 
-确保您的Fish shell版本是3.0.0或更新版本：
+Ensure your Fish shell version is 3.0.0 or newer:
 
-```
+```bash
 fish --version
 ```
 
-如果Fish版本过旧，请先更新Fish shell。
+If the Fish version is too old, please update the Fish shell first.
 
-### 问题：bass安装后仍然无法使用ROS2命令
+### Issue: ROS2 commands still unavailable after bass installation
 
-检查您的Fish配置文件中是否正确使用了bass命令：
+Check if the bass command is used correctly in your Fish configuration file:
 
-```
+```bash
 cat ~/.config/fish/config.fish | grep bass
 ```
 
-确保语法是`bass source /opt/ros/jazzy/setup.bash`，而不是`bass /opt/ros/jazzy/setup.bash`或其他形式。
+Ensure the syntax is `bass source /opt/ros/jazzy/setup.bash`, not `bass /opt/ros/jazzy/setup.bash` or any other form.
 
-### 问题：找不到特定的ROS2包或功能
+### Issue: Specific ROS2 package or functionality not found
 
-可能需要安装其他ROS2包。例如：
+You might need to install additional ROS2 packages. For example:
 
-```
+```bash
 sudo apt install ros-jazzy-<package-name>
 ```
 
-## 进一步说明
+## Further Notes
 
-- 每次安装新的ROS2包后，可能需要重新source环境或重启终端
-- 如果您有多个ROS2发行版，确保您的`config.fish`文件中source了正确的版本
-- bass插件可能会略微增加shell启动时间，如果这是个问题，可以考虑只在需要ROS2时手动source环境
+-   After installing new ROS2 packages, you may need to re-source the environment or restart the terminal.
+-   If you have multiple ROS2 distributions, ensure your `config.fish` file sources the correct version.
+-   The bass plugin might slightly increase shell startup time. If this is a concern, consider manually sourcing the environment only when ROS2 is needed.
 
-## 参考链接
+## Reference Links
 
-- [Fisher GitHub](https://github.com/jorgebucaran/fisher)
-- [bass GitHub](https://github.com/edc/bass)
-- [ROS2文档](https://docs.ros.org/en/jazzy/)
+-   [Fisher GitHub](https://github.com/jorgebucaran/fisher)
+-   [bass GitHub](https://github.com/edc/bass)
+-   [ROS2 Documentation](https://docs.ros.org/en/jazzy/)
