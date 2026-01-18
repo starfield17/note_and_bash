@@ -453,31 +453,54 @@ def menu_set_model() -> None:
     print("  2. ANTHROPIC_DEFAULT_SONNET_MODEL (Sonnet Tier)")
     print("  3. ANTHROPIC_DEFAULT_OPUS_MODEL (Opus Tier)")
     print("  4. ANTHROPIC_DEFAULT_HAIKU_MODEL (Haiku Tier)")
+    print("  5. Custom (Enter env var name)")
     print()
-    
-    choice = input(f"{Colors.CYAN}Please select [1-4]: {Colors.END}").strip()
-    
+    print("  0. Back")
+    print()
+
+    choice = input(f"{Colors.CYAN}Please select [0-5]: {Colors.END}").strip()
+
+    if choice == "0":
+        return
+
     model_vars = {
         "1": "ANTHROPIC_MODEL",
         "2": "ANTHROPIC_DEFAULT_SONNET_MODEL",
         "3": "ANTHROPIC_DEFAULT_OPUS_MODEL",
         "4": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
     }
-    
-    if choice not in model_vars:
+
+    if choice == "5":
+        var_name = input(
+            f"{Colors.CYAN}Enter Variable Name (e.g. ANTHROPIC_MODEL): {Colors.END}"
+        ).strip()
+        if not var_name:
+            print_warning("Variable name cannot be empty")
+            return
+
+        var_name = var_name.upper()
+        # 简单校验：只允许 A-Z 0-9 和下划线，且首字符为字母或下划线
+        if not (var_name[0].isalpha() or var_name[0] == "_") or not all(
+            ch.isalnum() or ch == "_" for ch in var_name
+        ):
+            print_error("Invalid variable name (use letters/numbers/underscore, start with a letter/_).")
+            return
+    elif choice in model_vars:
+        var_name = model_vars[choice]
+    else:
         print_error("Invalid selection")
         return
-    
-    var_name = model_vars[choice]
+
     model = input(f"{Colors.CYAN}Enter Model Name: {Colors.END}").strip()
     if not model:
         print_warning("Model name cannot be empty")
         return
-    
+
     config = load_config()
     config = set_env_value(config, var_name, model)
     if save_config(config):
         print_success(f"Set {var_name} = {model}")
+
 
 
 def menu_reset_config() -> None:
