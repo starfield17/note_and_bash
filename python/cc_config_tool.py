@@ -3,14 +3,17 @@
 Claude Code Configuration Manager
 Used to configure the ~/.claude/settings.json file for Claude Code.
 Supports both interactive menu and command-line argument modes.
+
+Optimized UI version with better visual feedback and navigation.
 """
 
 import argparse
 import json
 import os
 import sys
+import shutil
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 # ========================
 #       Constants
@@ -24,7 +27,7 @@ PRESETS = {
     "openrouter": {
         "name": "OpenRouter",
         "base_url": "https://openrouter.ai/api",
-        "description": "OpenRouter - Supports various models (GPT/Gemini/Claude, etc.)",
+        "description": "Supports various models (GPT/Gemini/Claude, etc.)",
         "env": {
             "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
@@ -33,7 +36,7 @@ PRESETS = {
     "deepseek": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/anthropic",
-        "description": "DeepSeek - High cost-performance models",
+        "description": "High cost-performance models",
         "env": {
             "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
             "ANTHROPIC_MODEL": "deepseek-chat",
@@ -45,7 +48,7 @@ PRESETS = {
     "zhipu": {
         "name": "Zhipu AI (BigModel)",
         "base_url": "https://open.bigmodel.cn/api/anthropic",
-        "description": "Zhipu AI - GLM series models",
+        "description": "GLM series models",
         "env": {
             "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
             "API_TIMEOUT_MS": "3000000",
@@ -78,42 +81,197 @@ ENV_VARS_INFO = {
 
 
 # ========================
-#       Helper Functions
+#       UI Components
 # ========================
 class Colors:
-    """Terminal Colors"""
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
+    """Terminal Colors with more options"""
+    # Basic colors
+    BLACK = '\033[30m'
+    RED = '\033[91m'
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
-    RED = '\033[91m'
-    END = '\033[0m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    
+    # Styles
     BOLD = '\033[1m'
+    DIM = '\033[2m'
+    ITALIC = '\033[3m'
+    UNDERLINE = '\033[4m'
+    
+    # Reset
+    END = '\033[0m'
+    
+    # Semantic colors
+    SUCCESS = GREEN
+    ERROR = RED
+    WARNING = YELLOW
+    INFO = BLUE
+    ACCENT = CYAN
+    MUTED = DIM
 
 
-def print_info(msg: str) -> None:
-    print(f"{Colors.BLUE}🔹 {msg}{Colors.END}")
+class Box:
+    """Box drawing characters for UI"""
+    # Single line
+    H = '─'
+    V = '│'
+    TL = '┌'
+    TR = '┐'
+    BL = '└'
+    BR = '┘'
+    LT = '├'
+    RT = '┤'
+    TT = '┬'
+    BT = '┴'
+    X = '┼'
+    
+    # Double line
+    DH = '═'
+    DV = '║'
+    DTL = '╔'
+    DTR = '╗'
+    DBL = '╚'
+    DBR = '╝'
+    
+    # Rounded
+    RTL = '╭'
+    RTR = '╮'
+    RBL = '╰'
+    RBR = '╯'
 
 
-def print_success(msg: str) -> None:
-    print(f"{Colors.GREEN}✅ {msg}{Colors.END}")
+class UI:
+    """UI Helper Functions"""
+    
+    @staticmethod
+    def get_terminal_size() -> Tuple[int, int]:
+        """Get terminal size (columns, rows)"""
+        size = shutil.get_terminal_size((80, 24))
+        return size.columns, size.lines
+    
+    @staticmethod
+    def clear_screen() -> None:
+        """Clear terminal screen"""
+        os.system('cls' if os.name == 'nt' else 'clear')
+    
+    @staticmethod
+    def center_text(text: str, width: int) -> str:
+        """Center text within given width"""
+        return text.center(width)
+    
+    @staticmethod
+    def draw_box(title: str, content: list[str], width: int = 60, style: str = "rounded") -> str:
+        """Draw a box with title and content"""
+        if style == "rounded":
+            tl, tr, bl, br = Box.RTL, Box.RTR, Box.RBL, Box.RBR
+        elif style == "double":
+            tl, tr, bl, br = Box.DTL, Box.DTR, Box.DBL, Box.DBR
+        else:
+            tl, tr, bl, br = Box.TL, Box.TR, Box.BL, Box.BR
+        
+        h = Box.DH if style == "double" else Box.H
+        v = Box.DV if style == "double" else Box.V
+        
+        inner_width = width - 2
+        lines = []
+        
+        # Top border with title
+        if title:
+            title_display = f" {title} "
+            padding = inner_width - len(title_display)
+            left_pad = padding // 2
+            right_pad = padding - left_pad
+            lines.append(f"{tl}{h * left_pad}{Colors.BOLD}{Colors.ACCENT}{title_display}{Colors.END}{h * right_pad}{tr}")
+        else:
+            lines.append(f"{tl}{h * inner_width}{tr}")
+        
+        # Content
+        for line in content:
+            # Strip ANSI codes for length calculation
+            import re
+            clean_line = re.sub(r'\033\[[0-9;]*m', '', line)
+            padding = inner_width - len(clean_line)
+            lines.append(f"{v}{line}{' ' * padding}{v}")
+        
+        # Bottom border
+        lines.append(f"{bl}{h * inner_width}{br}")
+        
+        return '\n'.join(lines)
+    
+    @staticmethod
+    def draw_separator(char: str = Box.H, width: int = 60) -> str:
+        """Draw a horizontal separator"""
+        return f"{Colors.DIM}{char * width}{Colors.END}"
+    
+    @staticmethod
+    def format_menu_item(number: str, text: str, hint: str = "", selected: bool = False) -> str:
+        """Format a menu item"""
+        if selected:
+            prefix = f"{Colors.ACCENT}{Colors.BOLD}▶{Colors.END}"
+        else:
+            prefix = " "
+        
+        num_display = f"{Colors.ACCENT}{Colors.BOLD}[{number}]{Colors.END}"
+        text_display = f"{Colors.WHITE}{text}{Colors.END}"
+        
+        if hint:
+            hint_display = f"{Colors.DIM}  {hint}{Colors.END}"
+            return f" {prefix} {num_display} {text_display}{hint_display}"
+        return f" {prefix} {num_display} {text_display}"
+    
+    @staticmethod
+    def prompt(text: str, default: str = "") -> str:
+        """Display a styled prompt and get input"""
+        default_hint = f" {Colors.DIM}[{default}]{Colors.END}" if default else ""
+        try:
+            result = input(f"\n {Colors.ACCENT}▸{Colors.END} {text}{default_hint}: ").strip()
+            return result if result else default
+        except EOFError:
+            return default
+    
+    @staticmethod
+    def confirm(text: str, default: bool = False) -> bool:
+        """Display a confirmation prompt"""
+        hint = "[Y/n]" if default else "[y/N]"
+        try:
+            result = input(f"\n {Colors.WARNING}?{Colors.END} {text} {Colors.DIM}{hint}{Colors.END}: ").strip().lower()
+            if not result:
+                return default
+            return result in ('y', 'yes')
+        except EOFError:
+            return default
+    
+    @staticmethod
+    def print_success(msg: str) -> None:
+        print(f"\n {Colors.SUCCESS}✓{Colors.END} {msg}")
+    
+    @staticmethod
+    def print_error(msg: str) -> None:
+        print(f"\n {Colors.ERROR}✗{Colors.END} {msg}", file=sys.stderr)
+    
+    @staticmethod
+    def print_warning(msg: str) -> None:
+        print(f"\n {Colors.WARNING}!{Colors.END} {msg}")
+    
+    @staticmethod
+    def print_info(msg: str) -> None:
+        print(f"\n {Colors.INFO}ℹ{Colors.END} {msg}")
+    
+    @staticmethod
+    def wait_for_key(msg: str = "Press Enter to continue...") -> None:
+        """Wait for user to press Enter"""
+        try:
+            input(f"\n {Colors.DIM}{msg}{Colors.END}")
+        except EOFError:
+            pass
 
 
-def print_error(msg: str) -> None:
-    print(f"{Colors.RED}❌ {msg}{Colors.END}", file=sys.stderr)
-
-
-def print_warning(msg: str) -> None:
-    print(f"{Colors.YELLOW}⚠️  {msg}{Colors.END}")
-
-
-def print_header(msg: str) -> None:
-    print(f"\n{Colors.BOLD}{Colors.CYAN}{'='*50}{Colors.END}")
-    print(f"{Colors.BOLD}{Colors.CYAN}  {msg}{Colors.END}")
-    print(f"{Colors.BOLD}{Colors.CYAN}{'='*50}{Colors.END}\n")
-
-
+# ========================
+#       Helper Functions
+# ========================
 def ensure_config_dir() -> None:
     """Ensure configuration directory exists"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -126,7 +284,7 @@ def load_config() -> dict:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print_warning(f"Config file format error, creating new configuration.")
+            UI.print_warning("Config file format error, creating new configuration.")
             return {}
     return {}
 
@@ -139,7 +297,7 @@ def save_config(config: dict) -> bool:
             json.dump(config, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
-        print_error(f"Failed to save config: {e}")
+        UI.print_error(f"Failed to save config: {e}")
         return False
 
 
@@ -161,7 +319,7 @@ def save_claude_json(config: dict) -> bool:
             json.dump(config, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
-        print_error(f"Failed to save ~/.claude.json: {e}")
+        UI.print_error(f"Failed to save ~/.claude.json: {e}")
         return False
 
 
@@ -188,32 +346,46 @@ def delete_env_value(config: dict, key: str) -> dict:
     return config
 
 
-def list_env_vars(config: dict) -> None:
-    """List all environment variables"""
+def mask_sensitive(key: str, value: str) -> str:
+    """Mask sensitive values for display"""
+    if "TOKEN" in key or "KEY" in key:
+        if len(value) > 10:
+            return value[:6] + "•" * 8 + value[-4:]
+        elif len(value) > 4:
+            return value[:2] + "•" * (len(value) - 4) + value[-2:]
+    return value
+
+
+def display_config(config: dict) -> None:
+    """Display configuration in a formatted box"""
     env = config.get("env", {})
+    
     if not env:
-        print_warning("No environment variables configured.")
+        UI.print_warning("No environment variables configured.")
         return
     
-    print_header("Current Environment Configuration")
+    content = []
     for key, value in env.items():
-        desc = ENV_VARS_INFO.get(key, "")
-        # Mask sensitive information
-        display_value = value
-        if "TOKEN" in key or "KEY" in key:
-            if len(value) > 10:
-                display_value = value[:6] + "..." + value[-4:]
-        print(f"  {Colors.CYAN}{key}{Colors.END}")
-        if desc:
-            print(f"    Description: {desc}")
-        print(f"    Value: {Colors.GREEN}{display_value}{Colors.END}")
-        print()
+        desc = ENV_VARS_INFO.get(key, "Custom")
+        display_value = mask_sensitive(key, value)
+        
+        content.append(f" {Colors.CYAN}{key}{Colors.END}")
+        content.append(f"   {Colors.DIM}├─{Colors.END} {desc}")
+        content.append(f"   {Colors.DIM}└─{Colors.END} {Colors.GREEN}{display_value}{Colors.END}")
+        content.append("")
+    
+    # Remove last empty line
+    if content and content[-1] == "":
+        content.pop()
+    
+    print()
+    print(UI.draw_box("Current Configuration", content, width=70))
 
 
 def apply_preset(config: dict, preset_name: str, api_key: Optional[str] = None) -> dict:
     """Apply preset configuration"""
     if preset_name not in PRESETS:
-        print_error(f"Unknown preset: {preset_name}")
+        UI.print_error(f"Unknown preset: {preset_name}")
         return config
     
     preset = PRESETS[preset_name]
@@ -228,7 +400,7 @@ def apply_preset(config: dict, preset_name: str, api_key: Optional[str] = None) 
     if api_key:
         config["env"]["ANTHROPIC_AUTH_TOKEN"] = api_key
     
-    print_success(f"Preset applied: {preset['name']}")
+    UI.print_success(f"Applied preset: {preset['name']}")
     return config
 
 
@@ -237,34 +409,65 @@ def complete_onboarding() -> None:
     claude_json = load_claude_json()
     claude_json["hasCompletedOnboarding"] = True
     if save_claude_json(claude_json):
-        print_success("Onboarding configuration completed.")
+        UI.print_success("Onboarding configuration completed.")
 
 
 # ========================
 #       Interactive Menu
 # ========================
+def draw_header() -> None:
+    """Draw the application header"""
+    width, _ = UI.get_terminal_size()
+    box_width = min(70, width - 4)
+    
+    title_lines = [
+        "",
+        f"{Colors.BOLD}Claude Code Configuration Manager{Colors.END}",
+        "",
+        f"{Colors.DIM}Config: {CONFIG_FILE}{Colors.END}",
+        "",
+    ]
+    
+    print(UI.draw_box("", title_lines, width=box_width, style="double"))
+
+
+def draw_main_menu() -> None:
+    """Draw the main menu"""
+    print()
+    print(f" {Colors.BOLD}Main Menu{Colors.END}")
+    print(UI.draw_separator(width=50))
+    print()
+    print(UI.format_menu_item("1", "View Current Config", "Show all settings"))
+    print(UI.format_menu_item("2", "Use Preset Config", "Quick setup ★"))
+    print(UI.format_menu_item("3", "Set Environment Variable"))
+    print(UI.format_menu_item("4", "Delete Environment Variable"))
+    print()
+    print(f" {Colors.DIM}── Quick Settings ──{Colors.END}")
+    print()
+    print(UI.format_menu_item("5", "Set API Key"))
+    print(UI.format_menu_item("6", "Set Base URL"))
+    print(UI.format_menu_item("7", "Set Model"))
+    print()
+    print(f" {Colors.DIM}── Other ──{Colors.END}")
+    print()
+    print(UI.format_menu_item("8", "Complete Onboarding"))
+    print(UI.format_menu_item("9", "Reset Configuration", "⚠ Danger"))
+    print(UI.format_menu_item("0", "Exit", "Ctrl+C"))
+    print()
+
+
 def interactive_menu() -> None:
     """Interactive Configuration Menu"""
     while True:
-        print_header("Claude Code Configuration Manager")
-        print(f"  Config File: {CONFIG_FILE}")
-        print()
-        print("  1. View Current Config")
-        print("  2. Use Preset Config (Recommended)")
-        print("  3. Set Environment Variable")
-        print("  4. Delete Environment Variable")
-        print("  5. Set API Key")
-        print("  6. Set Base URL")
-        print("  7. Set Model")
-        print("  8. Complete Onboarding")
-        print("  9. Reset Configuration")
-        print("  0. Exit")
-        print()
+        UI.clear_screen()
+        draw_header()
+        draw_main_menu()
         
-        choice = input(f"{Colors.CYAN}Please select an option [0-9]: {Colors.END}").strip()
+        choice = UI.prompt("Select an option", "0")
         
         if choice == "0":
-            print_success("Goodbye!")
+            UI.clear_screen()
+            print(f"\n {Colors.SUCCESS}Goodbye! 👋{Colors.END}\n")
             break
         elif choice == "1":
             menu_view_config()
@@ -282,34 +485,44 @@ def interactive_menu() -> None:
             menu_set_model()
         elif choice == "8":
             complete_onboarding()
+            UI.wait_for_key()
         elif choice == "9":
             menu_reset_config()
         else:
-            print_error("Invalid selection, please try again.")
+            UI.print_error("Invalid selection, please try again.")
+            UI.wait_for_key()
 
 
 def menu_view_config() -> None:
     """Menu: View Configuration"""
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}📋 Current Configuration{Colors.END}")
+    print(UI.draw_separator(width=50))
+    
     config = load_config()
-    list_env_vars(config)
-    input("\nPress Enter to continue...")
+    display_config(config)
+    
+    UI.wait_for_key()
 
 
 def menu_apply_preset() -> None:
     """Menu: Apply Preset Configuration"""
-    print_header("Select Preset Configuration")
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}⚡ Quick Setup - Select Preset{Colors.END}")
+    print(UI.draw_separator(width=50))
+    print()
     
     presets_list = list(PRESETS.items())
     for i, (key, preset) in enumerate(presets_list, 1):
-        print(f"  {i}. {preset['name']}")
-        print(f"     {Colors.CYAN}{preset['description']}{Colors.END}")
-        print(f"     URL: {preset['base_url']}")
+        print(UI.format_menu_item(str(i), preset['name']))
+        print(f"      {Colors.DIM}{preset['description']}{Colors.END}")
+        print(f"      {Colors.DIM}URL: {preset['base_url']}{Colors.END}")
         print()
     
-    print("  0. Back")
+    print(UI.format_menu_item("0", "Back"))
     print()
     
-    choice = input(f"{Colors.CYAN}Please select a preset [0-{len(presets_list)}]: {Colors.END}").strip()
+    choice = UI.prompt("Select a preset", "0")
     
     if choice == "0":
         return
@@ -318,47 +531,62 @@ def menu_apply_preset() -> None:
         idx = int(choice) - 1
         if 0 <= idx < len(presets_list):
             preset_key = presets_list[idx][0]
+            preset_name = presets_list[idx][1]['name']
+            
+            print()
+            print(f" {Colors.INFO}ℹ{Colors.END} Setting up {Colors.ACCENT}{preset_name}{Colors.END}")
             
             # Ask for API Key
-            api_key = input(f"\n{Colors.CYAN}Enter API Key (Leave blank to skip): {Colors.END}").strip()
+            api_key = UI.prompt("Enter API Key (leave blank to skip)")
             
             config = load_config()
             config = apply_preset(config, preset_key, api_key if api_key else None)
             
             if save_config(config):
-                print_success("Configuration saved!")
+                UI.print_success("Configuration saved!")
             
             # Ask to complete onboarding
-            complete = input(f"\n{Colors.CYAN}Complete Onboarding as well? [Y/n]: {Colors.END}").strip().lower()
-            if complete != "n":
+            if UI.confirm("Also complete onboarding?", default=True):
                 complete_onboarding()
+            
+            UI.wait_for_key()
         else:
-            print_error("Invalid selection")
+            UI.print_error("Invalid selection")
+            UI.wait_for_key()
     except ValueError:
-        print_error("Please enter a valid number")
+        UI.print_error("Please enter a valid number")
+        UI.wait_for_key()
 
 
 def menu_set_env() -> None:
     """Menu: Set Environment Variable"""
-    print_header("Set Environment Variable")
-    print("Common Variables:")
-    for key, desc in ENV_VARS_INFO.items():
-        print(f"  {Colors.CYAN}{key}{Colors.END}: {desc}")
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}🔧 Set Environment Variable{Colors.END}")
+    print(UI.draw_separator(width=50))
+    print()
+    print(f" {Colors.DIM}Common variables:{Colors.END}")
     print()
     
-    key = input(f"{Colors.CYAN}Enter Variable Name: {Colors.END}").strip()
-    if not key:
+    for key, desc in ENV_VARS_INFO.items():
+        print(f"   {Colors.CYAN}{key}{Colors.END}")
+        print(f"   {Colors.DIM}└─ {desc}{Colors.END}")
+        print()
+    
+    key = UI.prompt("Variable name (or 0 to cancel)")
+    if not key or key == "0":
         return
     
-    value = input(f"{Colors.CYAN}Enter Value: {Colors.END}").strip()
+    value = UI.prompt("Value")
     if not value:
-        print_warning("Value cannot be empty")
+        UI.print_warning("Value cannot be empty")
+        UI.wait_for_key()
         return
     
     config = load_config()
     config = set_env_value(config, key, value)
     if save_config(config):
-        print_success(f"Set {key}")
+        UI.print_success(f"Set {key}")
+    UI.wait_for_key()
 
 
 def menu_delete_env() -> None:
@@ -367,17 +595,26 @@ def menu_delete_env() -> None:
     env = config.get("env", {})
     
     if not env:
-        print_warning("No environment variables configured.")
+        UI.print_warning("No environment variables configured.")
+        UI.wait_for_key()
         return
     
-    print_header("Delete Environment Variable")
-    keys = list(env.keys())
-    for i, key in enumerate(keys, 1):
-        print(f"  {i}. {key}")
-    print("  0. Back")
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}🗑️  Delete Environment Variable{Colors.END}")
+    print(UI.draw_separator(width=50))
     print()
     
-    choice = input(f"{Colors.CYAN}Select variable to delete [0-{len(keys)}]: {Colors.END}").strip()
+    keys = list(env.keys())
+    for i, key in enumerate(keys, 1):
+        value = mask_sensitive(key, env[key])
+        print(UI.format_menu_item(str(i), key))
+        print(f"      {Colors.DIM}= {value}{Colors.END}")
+        print()
+    
+    print(UI.format_menu_item("0", "Back"))
+    print()
+    
+    choice = UI.prompt("Select variable to delete", "0")
     
     if choice == "0":
         return
@@ -386,79 +623,129 @@ def menu_delete_env() -> None:
         idx = int(choice) - 1
         if 0 <= idx < len(keys):
             key = keys[idx]
-            confirm = input(f"{Colors.YELLOW}Are you sure you want to delete {key}? [y/N]: {Colors.END}").strip().lower()
-            if confirm == "y":
+            if UI.confirm(f"Delete {Colors.CYAN}{key}{Colors.END}?", default=False):
                 config = delete_env_value(config, key)
                 if save_config(config):
-                    print_success(f"Deleted {key}")
+                    UI.print_success(f"Deleted {key}")
         else:
-            print_error("Invalid selection")
+            UI.print_error("Invalid selection")
     except ValueError:
-        print_error("Please enter a valid number")
+        UI.print_error("Please enter a valid number")
+    
+    UI.wait_for_key()
 
 
 def menu_set_api_key() -> None:
     """Menu: Set API Key"""
-    print_header("Set API Key")
-    print("Authentication Method:")
-    print("  1. ANTHROPIC_AUTH_TOKEN (Bearer Token, Recommended)")
-    print("  2. ANTHROPIC_API_KEY (X-Api-Key)")
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}🔑 Set API Key{Colors.END}")
+    print(UI.draw_separator(width=50))
+    print()
+    print(f" {Colors.DIM}Authentication Method:{Colors.END}")
+    print()
+    print(UI.format_menu_item("1", "ANTHROPIC_AUTH_TOKEN", "Bearer Token ★"))
+    print(UI.format_menu_item("2", "ANTHROPIC_API_KEY", "X-Api-Key"))
+    print()
+    print(UI.format_menu_item("0", "Back"))
     print()
     
-    choice = input(f"{Colors.CYAN}Select Auth Method [1/2]: {Colors.END}").strip()
+    choice = UI.prompt("Select auth method", "1")
     
-    if choice == "1":
+    if choice == "0":
+        return
+    elif choice == "1":
         key_name = "ANTHROPIC_AUTH_TOKEN"
     elif choice == "2":
         key_name = "ANTHROPIC_API_KEY"
     else:
-        print_error("Invalid selection")
+        UI.print_error("Invalid selection")
+        UI.wait_for_key()
         return
     
-    api_key = input(f"{Colors.CYAN}Enter API Key: {Colors.END}").strip()
+    api_key = UI.prompt("Enter API Key")
     if not api_key:
-        print_warning("API Key cannot be empty")
+        UI.print_warning("API Key cannot be empty")
+        UI.wait_for_key()
         return
     
     config = load_config()
     config = set_env_value(config, key_name, api_key)
     if save_config(config):
-        print_success(f"Set {key_name}")
+        UI.print_success(f"Set {key_name}")
+    UI.wait_for_key()
 
 
 def menu_set_base_url() -> None:
     """Menu: Set Base URL"""
-    print_header("Set Base URL")
-    print("Common URLs:")
-    for key, preset in PRESETS.items():
-        print(f"  {Colors.CYAN}{preset['name']}{Colors.END}: {preset['base_url']}")
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}🌐 Set Base URL{Colors.END}")
+    print(UI.draw_separator(width=50))
+    print()
+    print(f" {Colors.DIM}Common URLs:{Colors.END}")
     print()
     
-    url = input(f"{Colors.CYAN}Enter Base URL: {Colors.END}").strip()
+    for i, (key, preset) in enumerate(PRESETS.items(), 1):
+        print(UI.format_menu_item(str(i), preset['name']))
+        print(f"      {Colors.DIM}{preset['base_url']}{Colors.END}")
+        print()
+    
+    print(UI.format_menu_item("c", "Custom URL"))
+    print(UI.format_menu_item("0", "Back"))
+    print()
+    
+    choice = UI.prompt("Select or enter 'c' for custom", "0")
+    
+    if choice == "0":
+        return
+    
+    preset_list = list(PRESETS.values())
+    
+    if choice == "c":
+        url = UI.prompt("Enter custom Base URL")
+    else:
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(preset_list):
+                url = preset_list[idx]['base_url']
+            else:
+                UI.print_error("Invalid selection")
+                UI.wait_for_key()
+                return
+        except ValueError:
+            UI.print_error("Invalid input")
+            UI.wait_for_key()
+            return
+    
     if not url:
-        print_warning("URL cannot be empty")
+        UI.print_warning("URL cannot be empty")
+        UI.wait_for_key()
         return
     
     config = load_config()
     config = set_env_value(config, "ANTHROPIC_BASE_URL", url)
     if save_config(config):
-        print_success(f"Set ANTHROPIC_BASE_URL = {url}")
+        UI.print_success(f"Set ANTHROPIC_BASE_URL = {url}")
+    UI.wait_for_key()
 
 
 def menu_set_model() -> None:
     """Menu: Set Model"""
-    print_header("Set Model")
-    print("Model Variables:")
-    print("  1. ANTHROPIC_MODEL (Default Model)")
-    print("  2. ANTHROPIC_DEFAULT_SONNET_MODEL (Sonnet Tier)")
-    print("  3. ANTHROPIC_DEFAULT_OPUS_MODEL (Opus Tier)")
-    print("  4. ANTHROPIC_DEFAULT_HAIKU_MODEL (Haiku Tier)")
-    print("  5. Custom (Enter env var name)")
+    UI.clear_screen()
+    print(f"\n {Colors.BOLD}🤖 Set Model{Colors.END}")
+    print(UI.draw_separator(width=50))
     print()
-    print("  0. Back")
+    print(f" {Colors.DIM}Model Variables:{Colors.END}")
+    print()
+    print(UI.format_menu_item("1", "ANTHROPIC_MODEL", "Default Model"))
+    print(UI.format_menu_item("2", "ANTHROPIC_DEFAULT_SONNET_MODEL", "Sonnet Tier"))
+    print(UI.format_menu_item("3", "ANTHROPIC_DEFAULT_OPUS_MODEL", "Opus Tier"))
+    print(UI.format_menu_item("4", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "Haiku Tier"))
+    print(UI.format_menu_item("5", "Custom", "Enter env var name"))
+    print()
+    print(UI.format_menu_item("0", "Back"))
     print()
 
-    choice = input(f"{Colors.CYAN}Please select [0-5]: {Colors.END}").strip()
+    choice = UI.prompt("Select model variable", "0")
 
     if choice == "0":
         return
@@ -471,44 +758,51 @@ def menu_set_model() -> None:
     }
 
     if choice == "5":
-        var_name = input(
-            f"{Colors.CYAN}Enter Variable Name (e.g. ANTHROPIC_MODEL): {Colors.END}"
-        ).strip()
+        var_name = UI.prompt("Variable name (e.g. ANTHROPIC_MODEL)")
         if not var_name:
-            print_warning("Variable name cannot be empty")
+            UI.print_warning("Variable name cannot be empty")
+            UI.wait_for_key()
             return
 
         var_name = var_name.upper()
-        # 简单校验：只允许 A-Z 0-9 和下划线，且首字符为字母或下划线
         if not (var_name[0].isalpha() or var_name[0] == "_") or not all(
             ch.isalnum() or ch == "_" for ch in var_name
         ):
-            print_error("Invalid variable name (use letters/numbers/underscore, start with a letter/_).")
+            UI.print_error("Invalid variable name (use letters/numbers/underscore, start with a letter/_).")
+            UI.wait_for_key()
             return
     elif choice in model_vars:
         var_name = model_vars[choice]
     else:
-        print_error("Invalid selection")
+        UI.print_error("Invalid selection")
+        UI.wait_for_key()
         return
 
-    model = input(f"{Colors.CYAN}Enter Model Name: {Colors.END}").strip()
+    model = UI.prompt("Enter model name")
     if not model:
-        print_warning("Model name cannot be empty")
+        UI.print_warning("Model name cannot be empty")
+        UI.wait_for_key()
         return
 
     config = load_config()
     config = set_env_value(config, var_name, model)
     if save_config(config):
-        print_success(f"Set {var_name} = {model}")
-
+        UI.print_success(f"Set {var_name} = {model}")
+    UI.wait_for_key()
 
 
 def menu_reset_config() -> None:
     """Menu: Reset Configuration"""
-    confirm = input(f"{Colors.YELLOW}Are you sure you want to reset all configurations? [y/N]: {Colors.END}").strip().lower()
-    if confirm == "y":
+    print()
+    print(f" {Colors.WARNING}⚠ Warning: This will delete all configuration!{Colors.END}")
+    
+    if UI.confirm("Are you sure you want to reset all configurations?", default=False):
         if save_config({}):
-            print_success("Configuration reset")
+            UI.print_success("Configuration reset to empty")
+    else:
+        UI.print_info("Reset cancelled")
+    
+    UI.wait_for_key()
 
 
 # ========================
@@ -519,8 +813,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Claude Code Configuration Manager",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
+        epilog=f"""
+{Colors.BOLD}Examples:{Colors.END}
   %(prog)s                              # Start interactive menu
   %(prog)s --preset openrouter --key sk-xxx  # Use OpenRouter preset
   %(prog)s --preset deepseek --key sk-xxx    # Use DeepSeek preset
@@ -631,18 +925,34 @@ Examples:
         help="Force interactive mode"
     )
     
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored output"
+    )
+    
     return parser
+
+
+def disable_colors() -> None:
+    """Disable all colors"""
+    for attr in dir(Colors):
+        if not attr.startswith('_'):
+            setattr(Colors, attr, '')
 
 
 def run_cli(args: argparse.Namespace) -> int:
     """Run CLI Mode"""
+    if args.no_color:
+        disable_colors()
+    
     config = load_config()
     modified = False
     
     # Reset Config
     if args.reset:
         if save_config({}):
-            print_success("Configuration reset")
+            UI.print_success("Configuration reset")
             return 0
         return 1
     
@@ -656,7 +966,7 @@ def run_cli(args: argparse.Namespace) -> int:
                 print(value)
             return 0
         else:
-            print_error(f"Environment variable not found: {args.get}")
+            UI.print_error(f"Environment variable not found: {args.get}")
             return 1
     
     # List Config
@@ -664,7 +974,7 @@ def run_cli(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(config, indent=2, ensure_ascii=False))
         else:
-            list_env_vars(config)
+            display_config(config)
         return 0
     
     # Apply Preset
@@ -672,7 +982,6 @@ def run_cli(args: argparse.Namespace) -> int:
         config = apply_preset(config, args.preset, args.key)
         modified = True
     elif args.key:
-        # Set key individually
         config = set_env_value(config, "ANTHROPIC_AUTH_TOKEN", args.key)
         modified = True
     
@@ -711,14 +1020,14 @@ def run_cli(args: argparse.Namespace) -> int:
                 config = set_env_value(config, key.strip(), value.strip())
                 modified = True
             else:
-                print_error(f"Invalid format: {item} (Should be KEY=VALUE)")
+                UI.print_error(f"Invalid format: {item} (Should be KEY=VALUE)")
     
     # Delete Environment Variables
     if args.delete:
         for key in args.delete:
             config = delete_env_value(config, key)
             modified = True
-            print_info(f"Deleted {key}")
+            UI.print_info(f"Deleted {key}")
     
     # Complete Onboarding
     if args.onboarding:
@@ -727,11 +1036,11 @@ def run_cli(args: argparse.Namespace) -> int:
     # Save Config
     if modified:
         if save_config(config):
-            print_success("Configuration saved!")
+            UI.print_success("Configuration saved!")
             if args.json:
                 print(json.dumps(config, indent=2, ensure_ascii=False))
             else:
-                list_env_vars(config)
+                display_config(config)
             return 0
         return 1
     
@@ -746,6 +1055,9 @@ def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
     
+    if args.no_color:
+        disable_colors()
+    
     # If no arguments or forced interactive mode, enter interactive menu
     if args.interactive or (
         not any([
@@ -759,8 +1071,8 @@ def main() -> int:
             interactive_menu()
             return 0
         except KeyboardInterrupt:
-            print("\n")
-            print_info("Cancelled")
+            UI.clear_screen()
+            print(f"\n {Colors.INFO}Cancelled{Colors.END}\n")
             return 0
     else:
         return run_cli(args)
